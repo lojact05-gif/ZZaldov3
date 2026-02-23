@@ -1,0 +1,61 @@
+name: Build Zaldo Printer Installer
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "tools/zaldo_printer/**"
+      - ".github/workflows/build-zaldo-printer.yml"
+
+jobs:
+  build-installer:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build binaries
+        run: |
+          Set-Location tools/zaldo_printer/scripts
+          ./build.ps1 -Configuration Release -Runtime win-x64 -SelfContained:$true
+
+      - name: Build installer
+        run: |
+          Set-Location tools/zaldo_printer/scripts
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) {
+            throw "ISCC not found at '$iscc'."
+          }
+          ./build_installer.ps1 -InnoPath $iscc
+
+      - name: Generate checksum
+        run: |
+          $setup = "tools/zaldo_printer/dist/ZaldoPrinterSetup.exe"
+          if (!(Test-Path $setup)) {
+            throw "Installer not found: $setup"
+          }
+          Get-FileHash $setup -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  ZaldoPrinterSetup.exe" } |
+            Out-File -FilePath "tools/zaldo_printer/dist/ZaldoPrinterSetup.sha256" -Encoding ascii
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zaldo-printer-installer
+          path: |
+            tools/zaldo_printer/dist/ZaldoPrinterSetup.exe
+            tools/zaldo_printer/dist/ZaldoPrinterSetup.sha256
+          if-no-files-found: error
+          retention-days: 14
