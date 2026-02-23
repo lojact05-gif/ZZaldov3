@@ -79,7 +79,7 @@ internal sealed class ServiceApiClient
         var response = await _http.SendAsync(request);
         response.EnsureSuccessStatusCode();
         var payload = await response.Content.ReadFromJsonAsync<ApiPrintersEnvelope>();
-        return payload?.Printers ?? Array.Empty<InstalledPrinterInfo>();
+        return payload?.Printers ?? new List<InstalledPrinterInfo>();
     }
 
     public async Task<AppConfig> SaveConfigAsync(AppConfig config)
