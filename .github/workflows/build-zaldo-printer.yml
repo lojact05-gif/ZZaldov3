@@ -18,6 +18,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Resolve project path
+        id: resolve
+        run: |
+          $candidates = @(
+            "tools/zaldo_printer",
+            "zaldo.pt/tools/zaldo_printer"
+          )
+          $resolved = $null
+          foreach ($candidate in $candidates) {
+            if (Test-Path (Join-Path $candidate "scripts/build.ps1")) {
+              $resolved = $candidate
+              break
+            }
+          }
+          if (-not $resolved) {
+            Write-Host "Could not find tools/zaldo_printer/scripts/build.ps1 in known locations."
+            Write-Host "Repository root content:"
+            Get-ChildItem -Force | Select-Object Name, Mode
+            throw "Missing printer project files in repository checkout."
+          }
+          "printer_root=$resolved" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
       - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
         with:
@@ -28,12 +50,12 @@ jobs:
 
       - name: Build binaries
         run: |
-          Set-Location tools/zaldo_printer/scripts
+          Set-Location "${{ steps.resolve.outputs.printer_root }}/scripts"
           ./build.ps1 -Configuration Release -Runtime win-x64 -SelfContained:$true
 
       - name: Build installer
         run: |
-          Set-Location tools/zaldo_printer/scripts
+          Set-Location "${{ steps.resolve.outputs.printer_root }}/scripts"
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (!(Test-Path $iscc)) {
             throw "ISCC not found at '$iscc'."
@@ -42,20 +64,20 @@ jobs:
 
       - name: Generate checksum
         run: |
-          $setup = "tools/zaldo_printer/dist/ZaldoPrinterSetup.exe"
+          $setup = "${{ steps.resolve.outputs.printer_root }}/dist/ZaldoPrinterSetup.exe"
           if (!(Test-Path $setup)) {
             throw "Installer not found: $setup"
           }
           Get-FileHash $setup -Algorithm SHA256 |
             ForEach-Object { "$($_.Hash.ToLower())  ZaldoPrinterSetup.exe" } |
-            Out-File -FilePath "tools/zaldo_printer/dist/ZaldoPrinterSetup.sha256" -Encoding ascii
+            Out-File -FilePath "${{ steps.resolve.outputs.printer_root }}/dist/ZaldoPrinterSetup.sha256" -Encoding ascii
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: zaldo-printer-installer
           path: |
-            tools/zaldo_printer/dist/ZaldoPrinterSetup.exe
-            tools/zaldo_printer/dist/ZaldoPrinterSetup.sha256
+            ${{ steps.resolve.outputs.printer_root }}/dist/ZaldoPrinterSetup.exe
+            ${{ steps.resolve.outputs.printer_root }}/dist/ZaldoPrinterSetup.sha256
           if-no-files-found: error
           retention-days: 14
