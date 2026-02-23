@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - "tools/zaldo_printer/**"
+      - "zaldo_printer/**"
       - ".github/workflows/build-zaldo-printer.yml"
 
 jobs:
@@ -21,23 +22,20 @@ jobs:
       - name: Resolve project path
         id: resolve
         run: |
-          $candidates = @(
-            "tools/zaldo_printer",
-            "zaldo.pt/tools/zaldo_printer"
-          )
-          $resolved = $null
-          foreach ($candidate in $candidates) {
-            if (Test-Path (Join-Path $candidate "scripts/build.ps1")) {
-              $resolved = $candidate
-              break
-            }
-          }
-          if (-not $resolved) {
-            Write-Host "Could not find tools/zaldo_printer/scripts/build.ps1 in known locations."
-            Write-Host "Repository root content:"
+          $target = Get-ChildItem -Path . -Recurse -File -Filter build.ps1 |
+            Where-Object { $_.FullName -match '[\\/]+zaldo_printer[\\/]+scripts[\\/]+build\.ps1$' } |
+            Select-Object -First 1
+
+          if (-not $target) {
+            Write-Host "No build.ps1 found under any 'zaldo_printer/scripts' path."
+            Write-Host "Top-level repository content:"
             Get-ChildItem -Force | Select-Object Name, Mode
             throw "Missing printer project files in repository checkout."
           }
+
+          $scriptsDir = Split-Path -Path $target.FullName -Parent
+          $resolved = Split-Path -Path $scriptsDir -Parent
+          Write-Host "Resolved printer root: $resolved"
           "printer_root=$resolved" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Setup .NET 8
